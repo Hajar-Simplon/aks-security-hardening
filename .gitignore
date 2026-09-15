@@ -1,0 +1,6 @@
+# Local Kubernetes credentials
+kubeconfig*
+.env
+.env.*
+*.key
+
