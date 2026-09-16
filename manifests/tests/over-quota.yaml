@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: over-quota
+  namespace: prod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: one
+      image: registry.k8s.io/pause:3.10
+      resources: &resources
+        requests:
+          cpu: 100m
+          memory: 64Mi
+        limits:
+          cpu: "1"
+          memory: 128Mi
+    - name: two
+      image: registry.k8s.io/pause:3.10
+      resources: *resources
+    - name: three
+      image: registry.k8s.io/pause:3.10
+      resources: *resources
+    - name: four
+      image: registry.k8s.io/pause:3.10
+      resources: *resources
+    - name: five
+      image: registry.k8s.io/pause:3.10
+      resources: *resources
