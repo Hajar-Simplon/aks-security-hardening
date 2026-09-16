@@ -10,7 +10,7 @@ The scenario starts with a publicly accessible cluster whose administrative acce
 
 The main objectives are to:
 
-- Verify the initial cluster configuration and obtain trainer approval before applying security changes.
+- Establish and document the initial cluster configuration before applying security changes.
 - Restrict access to the Kubernetes API to the training center's public outbound IP address.
 - Enable Microsoft Entra ID authentication and Azure RBAC authorization for Kubernetes.
 - Separate human access into administrator and reader groups.
@@ -49,24 +49,54 @@ Checks performed from WSL confirmed the following baseline:
 | Azure cluster monitoring | Container Insights absent, Managed Prometheus disabled, no AKS diagnostic settings |
 | Existing workloads | All listed Pods were `Running` with their containers ready |
 | PostgreSQL storage | Persistent volume claim `Bound` |
-| `prod` namespace | Absent at the time of verification |
+| `prod` namespace | Absent during the initial baseline; created during implementation and present in the current configuration |
 | Resource quotas and LimitRanges | None returned by the inventory |
 
-OIDC and Workload Identity are already enabled at cluster level. Application identity configuration and permissions still need to be reviewed for this scenario.
+OIDC and Workload Identity are already enabled at cluster level. The application authentication model is explained in the Workload Identity documentation.
 
-These results describe the environment at the time of verification. They do not constitute full functional testing of applications or backups. Verification outputs are stored locally; submission evidence still needs to be added to this repository.
+These baseline results describe the environment before hardening. They do not constitute full functional testing of applications or backups.
+
+### Changes Applied and Verified
+
+The following controls have been implemented and verified:
+
+- Restricted API access to the public outbound IPv4 detected on the confirmed Simplon connection: `86.201.70.133/32`.
+- Created administrator and reader Entra security groups and assigned their cluster-scoped roles.
+- Enabled managed Entra authentication and Azure RBAC for Kubernetes.
+- Verified administrator access using Azure CLI authentication through standalone kubelogin in WSL.
+- Disabled local accounts and verified that new local admin credential retrieval is refused.
+- Created `prod` with a ResourceQuota and LimitRange.
+- Verified default resource injection and rejection of requests exceeding the container maximum or namespace quota using server-side dry runs.
+- Confirmed that existing Pods remained Running and ready.
+
+The reader group contains Steve THEVAL (`stheval@simplonformations.co`). Read-only behavior still requires verification from his own authenticated session. Separate reader, non-member and outside-IP tests remain outstanding. Previously issued local certificates have not been rotated.
 
 ### Next Steps
 
-1. Obtain trainer approval of the initial configuration and add the supporting screenshots.
-2. Prepare Entra ID groups, role assignments, and the authorized public IP address.
-3. Apply network filtering, Entra ID authentication, and authorization changes incrementally.
-4. Verify administrator, reader, and non-member access.
-5. Configure and test resource limits in `prod`.
-6. Document application authentication with Workload Identity.
-7. Complete the change plan and execution evidence.
+**Next acceptance test:** [Reader Access Acceptance Test](docs/08-reader-acceptance-test.md).
 
-**Security hardening has not yet been applied as part of this project. Trainer approval of the initial configuration is pending.**
+1. Validate the designated reader account in a separate authenticated session.
+2. Test access with a non-member identity and from an unauthorized outbound IP.
+3. Review inherited permissions, existing Kubernetes bindings and historical certificate consumers.
+4. Complete the screenshot evidence for the acceptance tests.
+
+**Access controls and namespace resource policies have been applied. The remaining access validation is explicitly tracked in [Verification Results](docs/03-verification.md).**
+
+## Documentation and Files
+
+Start with the [Deployment Runbook](docs/09-deployment-runbook.md) to reproduce the configuration on an existing AKS cluster. It covers prerequisites, environment parameters, group creation, role assignments, network restrictions, authentication, resource policies and acceptance tests. Infrastructure provisioning is outside scope.
+
+| Path | Contents |
+|---|---|
+| [Initial state](docs/01-initial-state.md) | Baseline configuration and observed risks |
+| [Access hardening](docs/02-access-hardening.md) | Applied access model |
+| [Verification](docs/03-verification.md) | Passed checks and pending work |
+| [Resource limits](docs/04-resource-limits.md) | ResourceQuota, LimitRange and admission tests |
+| [Workload Identity](docs/05-workload-identity.md) | Authentication flow and implementation checklist |
+| [Change plan](docs/06-change-plan.md) | Execution sequence, impact and recovery |
+| [Deployment runbook](docs/09-deployment-runbook.md) | Reproduction procedure for an existing cluster |
+| [Manifests](manifests/) | Applied resource policies and admission test cases |
+| [Screenshots](screenshots/README.md) | Reviewed evidence and outstanding captures |
 
 ## Target Access Model
 
@@ -78,6 +108,27 @@ These results describe the environment at the time of verification. They do not 
 | Application | A suitable dedicated or existing Azure identity, with permissions limited to its requirements |
 
 Human access to the API must also satisfy the IP restriction. Existing technical identities and inherited Azure permissions must be reviewed: access to the subscription alone does not determine effective Kubernetes permissions.
+
+## Application Authentication: Workload Identity
+
+Microsoft Entra Workload ID lets an application access Azure using short-lived tokens instead of a permanent access key stored in a Kubernetes Secret.
+
+![AKS Workload Identity: Pod, token exchange, Microsoft Entra ID and Azure permissions](docs/diagrams/workload-identity.svg)
+
+[Open the editable draw.io diagram](docs/diagrams/workload-identity.drawio)
+
+### How to Read the Diagram
+
+1. **AKS provides a token to the Pod.** The application runs with a Kubernetes ServiceAccount. AKS projects a short-lived, signed token identifying that ServiceAccount into the Pod.
+2. **The application requests an Azure token.** The Azure Identity SDK sends the ServiceAccount token to Microsoft Entra ID for the configured Azure identity.
+3. **Entra verifies the trust relationship.** It checks the token signature and the federated credential's expected issuer (the AKS cluster), subject (the exact namespace and ServiceAccount) and audience (the token exchange service).
+4. **Entra returns an Azure access token.** The SDK handles token acquisition and renewal for the application.
+5. **The application calls Azure.** It sends the access token to the target Azure resource API.
+6. **Azure checks permissions.** The target service validates the token and evaluates the identity's Azure RBAC permissions for the requested operation and resource scope.
+
+**Authentication establishes who the application is. Authorization determines what it can do.** A valid token does not grant unrestricted access to Azure.
+
+The diagram uses `prod / app-azure` as an illustrative ServiceAccount. OIDC and Workload Identity are enabled on the existing cluster; the application configuration is described in [Workload Identity](docs/05-workload-identity.md).
 
 ## Scope
 
@@ -107,7 +158,7 @@ Optional extensions include a group and role diagram and a script that guides th
 - Screenshots of applied configurations and executed tests.
 - An explanation of Workload Identity and its configuration.
 
-Only verified outcomes will be presented as completed. Personal study and oral-exam preparation notes are maintained separately from this repository.
+Implementation status is supported by recorded verification results. Outstanding tests and dependencies are tracked separately from completed controls.
 
 ## Sensitive Information
 
